@@ -3214,7 +3214,7 @@
             'luks', 'nbd', 'nfs', 'null-aio', 'null-co', 'nvme',
             { 'name': 'nvme-io_uring', 'if': 'CONFIG_BLKIO' },
             'parallels', 'preallocate', 'qcow', 'qcow2', 'qed', 'quorum',
-            'raw', 'rbd',
+            'raw', 'rawstor', 'rbd',
             { 'name': 'replication', 'if': 'CONFIG_REPLICATION' },
             'ssh', 'throttle', 'vdi', 'vhdx',
             { 'name': 'virtio-blk-vfio-pci', 'if': 'CONFIG_BLKIO' },
@@ -4300,6 +4300,17 @@
             '*server': ['InetSocketAddressBase'] } }
 
 ##
+# @BlockdevOptionsRawstor:
+#
+# Driver specific block device options for rawstor
+#
+# @size:        Desired image size in bytes
+##
+{ 'struct': 'BlockdevOptionsRawstor',
+  'data': { '*size': 'uint64' } }
+
+
+##
 # @ReplicationMode:
 #
 # An enumeration of replication modes.
@@ -4759,6 +4770,7 @@
       'qed':        'BlockdevOptionsGenericCOWFormat',
       'quorum':     'BlockdevOptionsQuorum',
       'raw':        'BlockdevOptionsRaw',
+      'rawstor':    'BlockdevOptionsRawstor',
       'rbd':        'BlockdevOptionsRbd',
       'replication': { 'type': 'BlockdevOptionsReplication',
                        'if': 'CONFIG_REPLICATION' },
@@ -5241,6 +5253,16 @@
             '*encrypt' :        'RbdEncryptionCreateOptions' } }
 
 ##
+# @BlockdevCreateOptionsRawstor:
+#
+# Driver specific image creation options for Rawstor.
+#
+# @size: Size of the virtual disk in bytes
+##
+{ 'struct': 'BlockdevCreateOptionsRawstor',
+  'data': { 'size':             'size' } }
+
+##
 # @BlockdevVmdkSubformat:
 #
 # Subformat options for VMDK images
@@ -5458,6 +5480,7 @@
       'qcow':           'BlockdevCreateOptionsQcow',
       'qcow2':          'BlockdevCreateOptionsQcow2',
       'qed':            'BlockdevCreateOptionsQed',
+      'rawstor':        'BlockdevCreateOptionsRawstor',
       'rbd':            'BlockdevCreateOptionsRbd',
       'ssh':            'BlockdevCreateOptionsSsh',
       'vdi':            'BlockdevCreateOptionsVdi',
