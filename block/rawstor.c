@@ -16,6 +16,7 @@
 
 typedef struct {
     size_t size;
+    int id;
     RawstorDevice *device;
 } BDRVRawstorState;
 
@@ -48,8 +49,16 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
-    s->size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30);
-    s->device = rawstor_alloc(s->size);
+    /**
+     * FIXME: Temporary workaround for in-memory rawstor devices.
+     */
+    RawstorDeviceSpec spec = {
+        .size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30)
+    };
+
+    s->size = spec.size;
+    s->id = rawstor_create(spec);
+    s->device = rawstor_open(s->id);
 
     qemu_opts_del(opts);
     return 0;
@@ -59,7 +68,11 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
 static void qemu_rawstor_close(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
 
-    rawstor_free(s->device);
+    /**
+     * FIXME: Temporary workaround for in-memory rawstor devices.
+     */
+    rawstor_close(s->device);
+    rawstor_delete(s->id);
 }
 
 
