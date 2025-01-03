@@ -1631,8 +1631,13 @@ if not get_option('rawstor').auto() or have_block
       #include <stdio.h>
       #include <rawstor.h>
       int main(void) {
-        RawstorDevice *device = rawstor_alloc(1);
-        rawstor_free(device);
+        RawstorDeviceSpec spec = {
+          .size = 1
+        };
+
+        int device_id = rawstor_create(spec);
+        rawstor_delete(device_id);
+
         return 0;
       }''', dependencies: [librbd, librados])
       rawstor = declare_dependency(dependencies: [librawstor])
