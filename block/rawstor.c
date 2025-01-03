@@ -113,14 +113,9 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
                                  int64_t bytes, QEMUIOVector *qiov,
                                  BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
-    for (int i = 0; i < qiov->niov; ++i) {
-        int64_t to_read = MIN(bytes, qiov->iov[i].iov_len);
 
-        rawstor_read(s->device, qiov->iov[i].iov_base, to_read, offset);
+    rawstor_readv(s->device, offset, bytes, qiov->iov, qiov->niov);
 
-        bytes -= to_read;
-        offset += to_read;
-    }
     return 0;
 }
 
@@ -130,14 +125,9 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
                                   int64_t bytes, QEMUIOVector *qiov,
                                   BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
-    for (int i = 0; i < qiov->niov; ++i) {
-        int64_t to_write = MIN(bytes, qiov->iov[i].iov_len);
 
-        rawstor_write(s->device, qiov->iov[i].iov_base, to_write, offset);
+    rawstor_writev(s->device, offset, bytes, qiov->iov, qiov->niov);
 
-        bytes -= to_write;
-        offset += to_write;
-    }
     return 0;
 }
 
