@@ -113,6 +113,7 @@ foreach m : [
   [libiscsi, 'iscsi', files('iscsi.c')],
   [libnfs, 'nfs', files('nfs.c')],
   [libssh, 'ssh', files('ssh.c')],
+  [rawstor, 'rawstor', files('rawstor.c')],
   [rbd, 'rbd', files('rbd.c')],
 ]
   if m[0].found()

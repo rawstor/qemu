@@ -1622,6 +1622,28 @@ if not get_option('rbd').auto() or have_block
   endif
 endif
 
+rawstor = not_found
+if not get_option('rawstor').auto() or have_block
+  librawstor = cc.find_library('rawstor', has_headers: ['rawstor.h'],
+                               required: get_option('rawstor'))
+  if librawstor.found()
+    if cc.links('''
+      #include <stdio.h>
+      #include <rawstor.h>
+      int main(void) {
+        RawstorDevice *device = rawstor_alloc(1);
+        rawstor_free(device);
+        return 0;
+      }''', dependencies: [librbd, librados])
+      rawstor = declare_dependency(dependencies: [librawstor])
+    elif get_option('rawstor').enabled()
+      error('could not link librawstor')
+    else
+      warning('librawstor not found, disabling')
+    endif
+  endif
+endif
+
 glusterfs = not_found
 glusterfs_ftruncate_has_stat = false
 glusterfs_iocb_has_stat = false
@@ -2505,6 +2527,7 @@ if numa.found()
 endif
 config_host_data.set('CONFIG_OPENGL', opengl.found())
 config_host_data.set('CONFIG_PLUGIN', get_option('plugins'))
+config_host_data.set('CONFIG_RAWSTOR', rawstor.found())
 config_host_data.set('CONFIG_RBD', rbd.found())
 config_host_data.set('CONFIG_RDMA', rdma.found())
 config_host_data.set('CONFIG_RELOCATABLE', get_option('relocatable'))
@@ -4872,6 +4895,7 @@ summary_info += {'fdt support':       fdt_opt == 'internal' ? 'internal' : fdt}
 summary_info += {'libcap-ng support': libcap_ng}
 summary_info += {'bpf support':       libbpf}
 summary_info += {'rbd support':       rbd}
+summary_info += {'rawstor support':   rawstor}
 summary_info += {'smartcard support': cacard}
 summary_info += {'U2F support':       u2f}
 summary_info += {'libusb':            libusb}
