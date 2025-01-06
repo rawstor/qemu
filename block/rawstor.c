@@ -15,7 +15,6 @@
 
 
 typedef struct {
-    size_t size;
     int id;
     RawstorDevice *device;
 } BDRVRawstorState;
@@ -56,7 +55,6 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         .size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30)
     };
 
-    s->size = spec.size;
     s->id = rawstor_create(spec);
     s->device = rawstor_open(s->id);
 
@@ -117,7 +115,11 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    return s->size;
+    RawstorDeviceSpec spec;
+    if (rawstor_spec(s->id, &spec)) {
+        return -1;
+    }
+    return spec.size;
 }
 
 
