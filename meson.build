@@ -1646,7 +1646,8 @@ if not get_option('rawstor').auto() or have_block
           .size = 1
         };
 
-        int device_id = rawstor_create(spec);
+        int device_id;
+        rawstor_create(spec, &device_id);
         rawstor_delete(device_id);
 
         return 0;
