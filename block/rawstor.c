@@ -42,9 +42,8 @@ static const char *const qemu_rawstor_strong_runtime_opts[] = {
 
 
 static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
-                             Error **errp) {
-    BDRVRawstorState *s = bs->opaque;
-
+                             Error **errp)
+{
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
@@ -55,10 +54,25 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         .size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30)
     };
 
-    s->id = rawstor_create(spec);
-    s->device = rawstor_open(s->id);
+    int device_id;
+    if (rawstor_create(spec, &device_id)) {
+        error_setg(errp, "Failed to create rawstor device");
+        return -1;
+    }
+
+    RawstorDevice *device;
+    if (rawstor_open(device_id, &device)) {
+        error_setg(errp, "Failed to open rawstor device");
+        rawstor_delete(device_id);
+        return -1;
+    }
+
+    BDRVRawstorState *s = bs->opaque;
+    s->id = device_id;
+    s->device = device;
 
     qemu_opts_del(opts);
+
     return 0;
 }
 
@@ -129,7 +143,9 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
                                  BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
 
-    rawstor_readv(s->device, offset, bytes, qiov->iov, qiov->niov);
+    if (rawstor_readv(s->device, offset, bytes, qiov->iov, qiov->niov)) {
+        return -1;
+    }
 
     return 0;
 }
@@ -141,7 +157,9 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
                                   BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
 
-    rawstor_writev(s->device, offset, bytes, qiov->iov, qiov->niov);
+    if (rawstor_writev(s->device, offset, bytes, qiov->iov, qiov->niov)) {
+        return -1;
+    }
 
     return 0;
 }
