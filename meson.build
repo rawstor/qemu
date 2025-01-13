@@ -1628,19 +1628,11 @@ if not get_option('rawstor').auto() or have_block
                                required: get_option('rawstor'))
   if librawstor.found()
     if cc.links('''
-      #include <stdio.h>
       #include <rawstor.h>
       int main(void) {
-        RawstorDeviceSpec spec = {
-          .size = 1
-        };
-
-        int device_id;
-        rawstor_create(spec, &device_id);
-        rawstor_delete(device_id);
-
+        rawstor_init(rawstor_backend_mem);
         return 0;
-      }''', dependencies: [librbd, librados])
+      }''')
       rawstor = declare_dependency(dependencies: [librawstor])
     elif get_option('rawstor').enabled()
       error('could not link librawstor')
