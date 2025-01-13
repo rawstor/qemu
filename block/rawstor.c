@@ -50,7 +50,7 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     /**
      * FIXME: Temporary workaround for in-memory rawstor devices.
      */
-    RawstorDeviceSpec spec = {
+    struct RawstorDeviceSpec spec = {
         .size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30)
     };
 
@@ -129,7 +129,7 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    RawstorDeviceSpec spec;
+    struct RawstorDeviceSpec spec;
     if (rawstor_spec(s->id, &spec)) {
         return -1;
     }
@@ -195,6 +195,7 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
+    rawstor_init(rawstor_backend_mem);
     bdrv_register(&bdrv_rawstor);
 }
 
