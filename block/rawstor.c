@@ -195,7 +195,6 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
-    rawstor_init(rawstor_backend_mem);
     bdrv_register(&bdrv_rawstor);
 }
 

@@ -1639,9 +1639,17 @@ if not get_option('rawstor').auto() or have_block
                                required: get_option('rawstor'))
   if librawstor.found()
     if cc.links('''
+      #include <stdio.h>
       #include <rawstor.h>
       int main(void) {
-        rawstor_init(rawstor_backend_mem);
+        struct RawstorDeviceSpec spec = {
+          .size = 1
+        };
+
+        int device_id;
+        rawstor_create(spec, &device_id);
+        rawstor_delete(device_id);
+
         return 0;
       }''')
       rawstor = declare_dependency(dependencies: [librawstor])
