@@ -15,8 +15,8 @@
 
 
 typedef struct {
-    int id;
-    RawstorDevice *device;
+    int object_id;
+    RawstorVolume *volume;
 } BDRVRawstorState;
 
 
@@ -25,9 +25,9 @@ static QemuOptsList runtime_opts = {
     .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
     .desc = {
         {
-            .name = BLOCK_OPT_SIZE,
-            .type = QEMU_OPT_SIZE,
-            .help = "size of the rawstor device",
+            .name = "object_id",
+            .type = QEMU_OPT_NUMBER,
+            .help = "rawstor object id",
         },
         { /* end of list */ }
     },
@@ -35,7 +35,7 @@ static QemuOptsList runtime_opts = {
 
 
 static const char *const qemu_rawstor_strong_runtime_opts[] = {
-    BLOCK_OPT_SIZE,
+    "object_id",
 
     NULL
 };
@@ -47,29 +47,21 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
-    /**
-     * FIXME: Temporary workaround for in-memory rawstor devices.
-     */
-    struct RawstorDeviceSpec spec = {
-        .size = qemu_opt_get_size(opts, BLOCK_OPT_SIZE, 1 << 30)
-    };
-
-    int device_id;
-    if (rawstor_create(spec, &device_id)) {
-        error_setg(errp, "Failed to create rawstor device");
+    int object_id = qemu_opt_get_number(opts, "object_id", -1);
+    if (object_id == -1) {
+        error_setg(errp, "object_id option required");
         return -1;
     }
 
-    RawstorDevice *device;
-    if (rawstor_open(device_id, &device)) {
-        error_setg(errp, "Failed to open rawstor device");
-        rawstor_delete(device_id);
+    RawstorVolume *volume;
+    if (rawstor_open(object_id, &volume)) {
+        error_setg(errp, "Failed to open rawstor volume");
         return -1;
     }
 
     BDRVRawstorState *s = bs->opaque;
-    s->id = device_id;
-    s->device = device;
+    s->object_id = object_id;
+    s->volume = volume;
 
     qemu_opts_del(opts);
 
@@ -79,12 +71,7 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
 
 static void qemu_rawstor_close(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-
-    /**
-     * FIXME: Temporary workaround for in-memory rawstor devices.
-     */
-    rawstor_close(s->device);
-    rawstor_delete(s->id);
+    rawstor_close(s->volume);
 }
 
 
@@ -129,22 +116,67 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    struct RawstorDeviceSpec spec;
-    if (rawstor_spec(s->id, &spec)) {
+    struct RawstorVolumeSpec spec;
+    if (rawstor_spec(s->object_id, &spec)) {
         return -1;
     }
     return spec.size;
 }
 
 
+static int qemu_rawstor_completion(RawstorVolume *, void *data) {
+    int *completed = (int*)data;
+    *completed = 1;
+    return 0;
+}
+
+
 static int
 coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
-                                 int64_t bytes, QEMUIOVector *qiov,
+                                 int64_t, QEMUIOVector *qiov,
                                  BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
+    int completed = 0;
 
-    if (rawstor_readv(s->device, offset, bytes, qiov->iov, qiov->niov)) {
+    /**
+     * TODO: Do we have to assert(bytes == sum(qiov))?
+     */
+    if (rawstor_readv(
+        s->volume,
+        offset,
+        qiov->iov, qiov->niov,
+        qemu_rawstor_completion, &completed))
+    {
         return -1;
+    }
+
+    while (!completed) {
+        /**
+         * TODO: Yep, we are still synchronious.
+         */
+        RawstorAIOEvent *event = rawstor_wait_event();
+        if (event == NULL) {
+            return -1;
+        }
+        /*
+        RawstorAIOEvent *event = rawstor_wait_timeout_event(0);
+        if (event == NULL) {
+            qemu_coroutine_yield();
+            continue;
+        }
+        */
+
+        int rval = rawstor_dispatch_event(event);
+
+        rawstor_release_event(event);
+
+        if (rval) {
+            /**
+             * TODO: What should we do here when event dispatcher
+             * returns an error.
+             */
+            return rval;
+        }
     }
 
     return 0;
@@ -153,12 +185,50 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
 
 static int
 coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
-                                  int64_t bytes, QEMUIOVector *qiov,
+                                  int64_t, QEMUIOVector *qiov,
                                   BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
+    int completed = 0;
 
-    if (rawstor_writev(s->device, offset, bytes, qiov->iov, qiov->niov)) {
+    /**
+     * TODO: Do we have to assert(bytes == sum(qiov))?
+     */
+    if (rawstor_writev(
+        s->volume,
+        offset,
+        qiov->iov, qiov->niov,
+        qemu_rawstor_completion, &completed))
+    {
         return -1;
+    }
+
+    while (!completed) {
+        /**
+         * TODO: Yep, we are still synchronious.
+         */
+        RawstorAIOEvent *event = rawstor_wait_event();
+        if (event == NULL) {
+            return -1;
+        }
+        /*
+        RawstorAIOEvent *event = rawstor_wait_timeout_event(0);
+        if (event == NULL) {
+            qemu_coroutine_yield();
+            continue;
+        }
+        */
+
+        int rval = rawstor_dispatch_event(event);
+
+        rawstor_release_event(event);
+
+        if (rval) {
+            /**
+             * TODO: What should we do here when event dispatcher
+             * returns an error?
+             */
+            return rval;
+        }
     }
 
     return 0;
@@ -195,6 +265,13 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
+    if (rawstor_initialize()) {
+        printf("Failed to initialize rawstor\n");
+        /**
+         * TODO: We have to return fatal error somewhere.
+         */
+        return;
+    }
     bdrv_register(&bdrv_rawstor);
 }
 
