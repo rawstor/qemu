@@ -16,7 +16,7 @@
 
 typedef struct {
     int object_id;
-    RawstorVolume *volume;
+    RawstorObject *object;
 } BDRVRawstorState;
 
 
@@ -53,15 +53,15 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         return -1;
     }
 
-    RawstorVolume *volume;
-    if (rawstor_open(object_id, &volume)) {
-        error_setg(errp, "Failed to open rawstor volume");
+    RawstorObject *object;
+    if (rawstor_object_open(object_id, &object)) {
+        error_setg(errp, "Failed to open rawstor object");
         return -1;
     }
 
     BDRVRawstorState *s = bs->opaque;
     s->object_id = object_id;
-    s->volume = volume;
+    s->object = object;
 
     qemu_opts_del(opts);
 
@@ -71,7 +71,7 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
 
 static void qemu_rawstor_close(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    rawstor_close(s->volume);
+    rawstor_object_close(s->object);
 }
 
 
@@ -116,15 +116,15 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    struct RawstorVolumeSpec spec;
-    if (rawstor_spec(s->object_id, &spec)) {
+    struct RawstorObjectSpec spec;
+    if (rawstor_object_spec(s->object_id, &spec)) {
         return -1;
     }
     return spec.size;
 }
 
 
-static int qemu_rawstor_completion(RawstorVolume *, void *data) {
+static int qemu_rawstor_completion(RawstorObject *, void *data) {
     int *completed = (int*)data;
     *completed = 1;
     return 0;
@@ -141,8 +141,8 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
     /**
      * TODO: Do we have to assert(bytes == sum(qiov))?
      */
-    if (rawstor_readv(
-        s->volume,
+    if (rawstor_object_readv(
+        s->object,
         offset,
         qiov->iov, qiov->niov,
         qemu_rawstor_completion, &completed))
@@ -159,7 +159,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
             return -1;
         }
         /*
-        RawstorAIOEvent *event = rawstor_wait_timeout_event(0);
+        RawstorAIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
             qemu_coroutine_yield();
             continue;
@@ -193,8 +193,8 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
     /**
      * TODO: Do we have to assert(bytes == sum(qiov))?
      */
-    if (rawstor_writev(
-        s->volume,
+    if (rawstor_object_writev(
+        s->object,
         offset,
         qiov->iov, qiov->niov,
         qemu_rawstor_completion, &completed))
@@ -211,7 +211,7 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
             return -1;
         }
         /*
-        RawstorAIOEvent *event = rawstor_wait_timeout_event(0);
+        RawstorAIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
             qemu_coroutine_yield();
             continue;
