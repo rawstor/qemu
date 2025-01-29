@@ -124,8 +124,15 @@ static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
 }
 
 
-static int qemu_rawstor_completion(RawstorObject *, void *data) {
+static int qemu_rawstor_completion(
+    RawstorObject *, off_t, ssize_t,
+    struct iovec *, unsigned int, size_t,
+    void *data)
+{
     int *completed = (int*)data;
+    /**
+     * TODO: Handle partial request here.
+     */
     *completed = 1;
     return 0;
 }
@@ -133,7 +140,7 @@ static int qemu_rawstor_completion(RawstorObject *, void *data) {
 
 static int
 coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
-                                 int64_t, QEMUIOVector *qiov,
+                                 int64_t bytes, QEMUIOVector *qiov,
                                  BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
     int completed = 0;
@@ -144,7 +151,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
     if (rawstor_object_readv(
         s->object,
         offset,
-        qiov->iov, qiov->niov,
+        qiov->iov, qiov->niov, bytes,
         qemu_rawstor_completion, &completed))
     {
         return -1;
@@ -185,7 +192,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
 
 static int
 coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
-                                  int64_t, QEMUIOVector *qiov,
+                                  int64_t bytes, QEMUIOVector *qiov,
                                   BdrvRequestFlags flags) {
     BDRVRawstorState *s = bs->opaque;
     int completed = 0;
@@ -196,7 +203,7 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
     if (rawstor_object_writev(
         s->object,
         offset,
-        qiov->iov, qiov->niov,
+        qiov->iov, qiov->niov, bytes,
         qemu_rawstor_completion, &completed))
     {
         return -1;
