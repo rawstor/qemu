@@ -4304,10 +4304,10 @@
 #
 # Driver specific block device options for rawstor
 #
-# @size:        Desired image size in bytes
+# @object-id: Object id
 ##
 { 'struct': 'BlockdevOptionsRawstor',
-  'data': { '*size': 'uint64' } }
+  'data': { '*object-id': 'uint64' } }
 
 
 ##
@@ -5257,10 +5257,10 @@
 #
 # Driver specific image creation options for Rawstor.
 #
-# @size: Size of the virtual disk in bytes
+# @object-id: Object id
 ##
 { 'struct': 'BlockdevCreateOptionsRawstor',
-  'data': { 'size':             'size' } }
+  'data': { 'object-id':        'size' } }
 
 ##
 # @BlockdevVmdkSubformat:
