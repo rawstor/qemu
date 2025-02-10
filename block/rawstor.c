@@ -25,7 +25,7 @@ static QemuOptsList runtime_opts = {
     .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
     .desc = {
         {
-            .name = "object_id",
+            .name = "object-id",
             .type = QEMU_OPT_NUMBER,
             .help = "rawstor object id",
         },
@@ -35,7 +35,7 @@ static QemuOptsList runtime_opts = {
 
 
 static const char *const qemu_rawstor_strong_runtime_opts[] = {
-    "object_id",
+    "object-id",
 
     NULL
 };
@@ -47,9 +47,9 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
-    int object_id = qemu_opt_get_number(opts, "object_id", -1);
+    int object_id = qemu_opt_get_number(opts, "object-id", -1);
     if (object_id == -1) {
-        error_setg(errp, "object_id option required");
+        error_setg(errp, "object-id option required");
         return -1;
     }
 
@@ -177,11 +177,13 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
 
         rawstor_release_event(event);
 
-        if (rval) {
+        if (rval < 0) {
             /**
              * TODO: What should we do here when event dispatcher
              * returns an error.
              */
+            errno = -rval;
+            perror("rawstor_dispatch_event() failed");
             return rval;
         }
     }
@@ -229,11 +231,13 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
 
         rawstor_release_event(event);
 
-        if (rval) {
+        if (rval < 0) {
             /**
              * TODO: What should we do here when event dispatcher
              * returns an error?
              */
+            errno = -rval;
+            perror("rawstor_dispatch_event() failed");
             return rval;
         }
     }
