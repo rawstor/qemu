@@ -125,9 +125,7 @@ static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
 
 
 static int qemu_rawstor_completion(
-    RawstorObject *object, off_t offset,
-    struct iovec *iov, unsigned int niov, size_t size,
-    ssize_t res, void *data)
+    RawstorObject *object, size_t size, ssize_t res, void *data)
 {
     int *completed = (int*)data;
     /**
@@ -150,8 +148,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
      */
     if (rawstor_object_readv(
         s->object,
-        offset,
-        qiov->iov, qiov->niov, bytes,
+        qiov->iov, qiov->niov, bytes, offset,
         qemu_rawstor_completion, &completed))
     {
         return -1;
@@ -204,8 +201,7 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
      */
     if (rawstor_object_writev(
         s->object,
-        offset,
-        qiov->iov, qiov->niov, bytes,
+        qiov->iov, qiov->niov, bytes, offset,
         qemu_rawstor_completion, &completed))
     {
         return -1;
