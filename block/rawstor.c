@@ -158,12 +158,12 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
         /**
          * TODO: Yep, we are still synchronious.
          */
-        RawstorAIOEvent *event = rawstor_wait_event();
+        RawstorIOEvent *event = rawstor_wait_event();
         if (event == NULL) {
             return -1;
         }
         /*
-        RawstorAIOEvent *event = rawstor_wait_event_timeout(0);
+        RawstorIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
             qemu_coroutine_yield();
             continue;
@@ -211,12 +211,12 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
         /**
          * TODO: Yep, we are still synchronious.
          */
-        RawstorAIOEvent *event = rawstor_wait_event();
+        RawstorIOEvent *event = rawstor_wait_event();
         if (event == NULL) {
             return -1;
         }
         /*
-        RawstorAIOEvent *event = rawstor_wait_event_timeout(0);
+        RawstorIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
             qemu_coroutine_yield();
             continue;
