@@ -146,7 +146,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
     /**
      * TODO: Do we have to assert(bytes == sum(qiov))?
      */
-    if (rawstor_object_readv(
+    if (rawstor_object_preadv(
         s->object,
         qiov->iov, qiov->niov, bytes, offset,
         qemu_rawstor_completion, &completed))
@@ -199,7 +199,7 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
     /**
      * TODO: Do we have to assert(bytes == sum(qiov))?
      */
-    if (rawstor_object_writev(
+    if (rawstor_object_pwritev(
         s->object,
         qiov->iov, qiov->niov, bytes, offset,
         qemu_rawstor_completion, &completed))
