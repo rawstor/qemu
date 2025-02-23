@@ -20,6 +20,14 @@ typedef struct {
 } BDRVRawstorState;
 
 
+typedef struct RawstorTask {
+    BlockDriverState *bs;
+    AioContext *ctx;
+    Coroutine *co;
+    bool completed;
+} RawstorTask;
+
+
 static QemuOptsList runtime_opts = {
     .name = "null",
     .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
@@ -130,106 +138,36 @@ static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
 
 
 static int qemu_rawstor_completion(
-    RawstorObject *object, size_t size, size_t res, int error, void *data)
+    RawstorObject *object, size_t size, size_t res, int error, void *opaque)
 {
-    int *completed = (int*)data;
+    printf("%s() <<<\n", __FUNCTION__);
+    RawstorTask *task = (RawstorTask*)opaque;
     /**
      * TODO: Handle partial request here.
      */
-    *completed = 1;
+    task->completed = 1;
+    printf("%s() >>>\n", __FUNCTION__);
     return 0;
 }
 
 
-static int
-coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
-                                 int64_t bytes, QEMUIOVector *qiov,
-                                 BdrvRequestFlags flags) {
-    BDRVRawstorState *s = bs->opaque;
-    int completed = 0;
-
-    /**
-     * TODO: Do we have to assert(bytes == sum(qiov))?
-     */
-    if (rawstor_object_preadv(
-        s->object,
-        qiov->iov, qiov->niov, bytes, offset,
-        qemu_rawstor_completion, &completed))
-    {
-        return -1;
-    }
-
-    while (!completed) {
-        /**
-         * TODO: Yep, we are still synchronious.
-         */
-        RawstorIOEvent *event = rawstor_wait_event();
-        if (event == NULL) {
-            return -1;
-        }
-        /*
+static void qemu_rawstor_bh_poll_cb(void *opaque) {
+    printf("%s() <<<\n", __FUNCTION__);
+    RawstorTask *task = (RawstorTask*)opaque;
+    if (!task->completed) {
+        printf("%s() rawstor_wait_event_timeout\n", __FUNCTION__);
         RawstorIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
-            qemu_coroutine_yield();
-            continue;
+            printf("%s() event == NULL\n", __FUNCTION__);
+            aio_bh_schedule_oneshot(task->ctx, qemu_rawstor_bh_poll_cb, task);
+            printf("%s() >>>\n", __FUNCTION__);
+            return;
         }
-        */
 
+        printf("%s() rawstor_dispatch_event\n", __FUNCTION__);
         int rval = rawstor_dispatch_event(event);
 
-        rawstor_release_event(event);
-
-        if (rval < 0) {
-            /**
-             * TODO: What should we do here when event dispatcher
-             * returns an error.
-             */
-            errno = -rval;
-            perror("rawstor_dispatch_event() failed");
-            return rval;
-        }
-    }
-
-    return 0;
-}
-
-
-static int
-coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
-                                  int64_t bytes, QEMUIOVector *qiov,
-                                  BdrvRequestFlags flags) {
-    BDRVRawstorState *s = bs->opaque;
-    int completed = 0;
-
-    /**
-     * TODO: Do we have to assert(bytes == sum(qiov))?
-     */
-    if (rawstor_object_pwritev(
-        s->object,
-        qiov->iov, qiov->niov, bytes, offset,
-        qemu_rawstor_completion, &completed))
-    {
-        return -1;
-    }
-
-    while (!completed) {
-        /**
-         * TODO: Yep, we are still synchronious.
-         */
-        RawstorIOEvent *event = rawstor_wait_event();
-        if (event == NULL) {
-            return -1;
-        }
-        /*
-        RawstorIOEvent *event = rawstor_wait_event_timeout(0);
-        if (event == NULL) {
-            qemu_coroutine_yield();
-            continue;
-        }
-        */
-
-        int rval = rawstor_dispatch_event(event);
-
+        printf("%s() rawstor_release_event\n", __FUNCTION__);
         rawstor_release_event(event);
 
         if (rval < 0) {
@@ -239,10 +177,92 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
              */
             errno = -rval;
             perror("rawstor_dispatch_event() failed");
-            return rval;
+        }
+
+        if (!task->completed) {
+            aio_bh_schedule_oneshot(task->ctx, qemu_rawstor_bh_poll_cb, task);
+            printf("%s() >>>\n", __FUNCTION__);
+            return;
         }
     }
+    aio_co_wake(task->co);
+    printf("%s() >>>\n", __FUNCTION__);
+}
 
+
+static int
+coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
+                                 int64_t bytes, QEMUIOVector *qiov,
+                                 BdrvRequestFlags flags)
+{
+    printf("%s() <<<\n", __FUNCTION__);
+    BDRVRawstorState *s = bs->opaque;
+    RawstorTask task = {
+        .bs = bs,
+        .ctx = bdrv_get_aio_context(bs),
+        .co = qemu_coroutine_self(),
+        .completed = 0,
+    };
+
+    /**
+     * TODO: Do we have to assert(bytes == sum(qiov))?
+     */
+    if (rawstor_object_preadv(
+        s->object,
+        qiov->iov, qiov->niov, bytes, offset,
+        qemu_rawstor_completion, &task))
+    {
+        perror("rawstor_object_preadv() failed");
+        return -1;
+    }
+
+    aio_bh_schedule_oneshot(task.ctx, qemu_rawstor_bh_poll_cb, &task);
+
+    while (!task.completed) {
+        printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
+        qemu_coroutine_yield();
+        printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
+    }
+
+    printf("%s() >>>\n", __FUNCTION__);
+    return 0;
+}
+
+
+static int
+coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
+                                  int64_t bytes, QEMUIOVector *qiov,
+                                  BdrvRequestFlags flags) {
+    printf("%s() <<<\n", __FUNCTION__);
+    BDRVRawstorState *s = bs->opaque;
+    RawstorTask task = {
+        .bs = bs,
+        .ctx = bdrv_get_aio_context(bs),
+        .co = qemu_coroutine_self(),
+        .completed = 0,
+    };
+
+    /**
+     * TODO: Do we have to assert(bytes == sum(qiov))?
+     */
+    if (rawstor_object_pwritev(
+        s->object,
+        qiov->iov, qiov->niov, bytes, offset,
+        qemu_rawstor_completion, &task))
+    {
+        perror("rawstor_object_pwritev() failed");
+        return -1;
+    }
+
+    aio_bh_schedule_oneshot(task.ctx, qemu_rawstor_bh_poll_cb, &task);
+
+    while (!task.completed) {
+        printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
+        qemu_coroutine_yield();
+        printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
+    }
+
+    printf("%s() >>>\n", __FUNCTION__);
     return 0;
 }
 
