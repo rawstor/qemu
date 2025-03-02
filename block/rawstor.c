@@ -125,7 +125,7 @@ static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
 
 
 static int qemu_rawstor_completion(
-    RawstorObject *object, size_t size, ssize_t res, void *data)
+    RawstorObject *object, size_t size, size_t res, int error, void *data)
 {
     int *completed = (int*)data;
     /**
