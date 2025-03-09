@@ -116,7 +116,7 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    struct RawstorObjectSpec spec;
+    RawstorObjectSpec spec;
     if (rawstor_object_spec(s->object_id, &spec)) {
         return -1;
     }
@@ -272,7 +272,7 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
-    if (rawstor_initialize()) {
+    if (rawstor_initialize(NULL)) {
         printf("Failed to initialize rawstor\n");
         /**
          * TODO: We have to return fatal error somewhere.
