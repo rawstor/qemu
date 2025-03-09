@@ -1641,7 +1641,7 @@ if not get_option('rawstor').auto() or have_block
     if cc.links('''
       #include <rawstor.h>
       int main(void) {
-        rawstor_initialize();
+        rawstor_initialize(NULL);
         rawstor_terminate();
 
         return 0;
