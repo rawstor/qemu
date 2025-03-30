@@ -15,7 +15,7 @@
 
 
 typedef struct {
-    int object_id;
+    RawstorUUID object_id;
     RawstorObject *object;
 } BDRVRawstorState;
 
@@ -26,7 +26,7 @@ static QemuOptsList runtime_opts = {
     .desc = {
         {
             .name = "object-id",
-            .type = QEMU_OPT_NUMBER,
+            .type = QEMU_OPT_STRING,
             .help = "rawstor object id",
         },
         { /* end of list */ }
@@ -47,14 +47,19 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
-    int object_id = qemu_opt_get_number(opts, "object-id", -1);
-    if (object_id == -1) {
+    const char *object_id_string = qemu_opt_get(opts, "object-id");
+    if (object_id_string == NULL) {
         error_setg(errp, "object-id option required");
+        return -1;
+    }
+    RawstorUUID object_id;
+    if (rawstor_uuid_from_string(object_id_string, &object_id)) {
+        error_setg(errp, "object-id must be valid UUID");
         return -1;
     }
 
     RawstorObject *object;
-    if (rawstor_object_open(object_id, &object)) {
+    if (rawstor_object_open(&object_id, &object)) {
         error_setg(errp, "Failed to open rawstor object");
         return -1;
     }
@@ -117,7 +122,7 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
     RawstorObjectSpec spec;
-    if (rawstor_object_spec(s->object_id, &spec)) {
+    if (rawstor_object_spec(&s->object_id, &spec)) {
         return -1;
     }
     return spec.size;
