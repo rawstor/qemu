@@ -4307,7 +4307,7 @@
 # @object-id: Object id
 ##
 { 'struct': 'BlockdevOptionsRawstor',
-  'data': { '*object-id': 'uint64' } }
+  'data': { 'object-id': 'str' } }
 
 
 ##
@@ -5257,10 +5257,10 @@
 #
 # Driver specific image creation options for Rawstor.
 #
-# @object-id: Object id
+# @size: Size of rawstor object in bytes
 ##
 { 'struct': 'BlockdevCreateOptionsRawstor',
-  'data': { 'object-id':        'size' } }
+  'data': { 'size':             'size' } }
 
 ##
 # @BlockdevVmdkSubformat:
