@@ -53,7 +53,7 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         return -1;
     }
     RawstorUUID object_id;
-    if (rawstor_uuid_from_string(object_id_string, &object_id)) {
+    if (rawstor_uuid_from_string(&object_id, object_id_string)) {
         error_setg(errp, "object-id must be valid UUID");
         return -1;
     }
