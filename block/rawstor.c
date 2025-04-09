@@ -140,34 +140,34 @@ static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
 static int qemu_rawstor_completion(
     RawstorObject *object, size_t size, size_t res, int error, void *opaque)
 {
-    printf("%s() <<<\n", __FUNCTION__);
+    // printf("%s() <<<\n", __FUNCTION__);
     RawstorTask *task = (RawstorTask*)opaque;
     /**
      * TODO: Handle partial request here.
      */
     task->completed = 1;
-    printf("%s() >>>\n", __FUNCTION__);
+    // printf("%s() >>>\n", __FUNCTION__);
     return 0;
 }
 
 
 static void qemu_rawstor_bh_poll_cb(void *opaque) {
-    printf("%s() <<<\n", __FUNCTION__);
+    // printf("%s() <<<\n", __FUNCTION__);
     RawstorTask *task = (RawstorTask*)opaque;
     if (!task->completed) {
-        printf("%s() rawstor_wait_event_timeout\n", __FUNCTION__);
+        // printf("%s() rawstor_wait_event_timeout\n", __FUNCTION__);
         RawstorIOEvent *event = rawstor_wait_event_timeout(0);
         if (event == NULL) {
-            printf("%s() event == NULL\n", __FUNCTION__);
+            // printf("%s() event == NULL\n", __FUNCTION__);
             aio_bh_schedule_oneshot(task->ctx, qemu_rawstor_bh_poll_cb, task);
-            printf("%s() >>>\n", __FUNCTION__);
+            // printf("%s() >>>\n", __FUNCTION__);
             return;
         }
 
-        printf("%s() rawstor_dispatch_event\n", __FUNCTION__);
+        // printf("%s() rawstor_dispatch_event\n", __FUNCTION__);
         int rval = rawstor_dispatch_event(event);
 
-        printf("%s() rawstor_release_event\n", __FUNCTION__);
+        // printf("%s() rawstor_release_event\n", __FUNCTION__);
         rawstor_release_event(event);
 
         if (rval < 0) {
@@ -181,12 +181,12 @@ static void qemu_rawstor_bh_poll_cb(void *opaque) {
 
         if (!task->completed) {
             aio_bh_schedule_oneshot(task->ctx, qemu_rawstor_bh_poll_cb, task);
-            printf("%s() >>>\n", __FUNCTION__);
+            // printf("%s() >>>\n", __FUNCTION__);
             return;
         }
     }
     aio_co_wake(task->co);
-    printf("%s() >>>\n", __FUNCTION__);
+    // printf("%s() >>>\n", __FUNCTION__);
 }
 
 
@@ -195,7 +195,7 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
                                  int64_t bytes, QEMUIOVector *qiov,
                                  BdrvRequestFlags flags)
 {
-    printf("%s() <<<\n", __FUNCTION__);
+    // printf("%s() <<<\n", __FUNCTION__);
     BDRVRawstorState *s = bs->opaque;
     RawstorTask task = {
         .bs = bs,
@@ -219,12 +219,12 @@ coroutine_fn qemu_rawstor_preadv(BlockDriverState *bs, int64_t offset,
     aio_bh_schedule_oneshot(task.ctx, qemu_rawstor_bh_poll_cb, &task);
 
     while (!task.completed) {
-        printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
+        // printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
         qemu_coroutine_yield();
-        printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
+        // printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
     }
 
-    printf("%s() >>>\n", __FUNCTION__);
+    // printf("%s() >>>\n", __FUNCTION__);
     return 0;
 }
 
@@ -233,7 +233,7 @@ static int
 coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
                                   int64_t bytes, QEMUIOVector *qiov,
                                   BdrvRequestFlags flags) {
-    printf("%s() <<<\n", __FUNCTION__);
+    // printf("%s() <<<\n", __FUNCTION__);
     BDRVRawstorState *s = bs->opaque;
     RawstorTask task = {
         .bs = bs,
@@ -257,12 +257,12 @@ coroutine_fn qemu_rawstor_pwritev(BlockDriverState *bs, int64_t offset,
     aio_bh_schedule_oneshot(task.ctx, qemu_rawstor_bh_poll_cb, &task);
 
     while (!task.completed) {
-        printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
+        // printf("%s() call qemu_coroutine_yield()\n", __FUNCTION__);
         qemu_coroutine_yield();
-        printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
+        // printf("%s() after qemu_coroutine_yield()\n", __FUNCTION__);
     }
 
-    printf("%s() >>>\n", __FUNCTION__);
+    // printf("%s() >>>\n", __FUNCTION__);
     return 0;
 }
 
@@ -298,7 +298,7 @@ static BlockDriver bdrv_rawstor = {
 
 static void bdrv_rawstor_init(void) {
     if (rawstor_initialize(NULL)) {
-        printf("Failed to initialize rawstor\n");
+        // printf("Failed to initialize rawstor\n");
         /**
          * TODO: We have to return fatal error somewhere.
          */
