@@ -50,6 +50,9 @@ typedef struct RawstorTask {
 } RawstorTask;
 
 
+typedef RawstorTask* RawstorTaskPtr;
+
+
 static QemuOptsList runtime_opts = {
     .name = "null",
     .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
@@ -91,26 +94,23 @@ static int fd_add_flag(int fd, int flag) {
 
 
 static void qemu_rawstor_finish_bh(void *opaque) {
-    RawstorTask *task = (RawstorTask*)opaque;
-    task->completed = true;
-    aio_co_wake(task->co);
+    RawstorTaskPtr taskptr = opaque;
+    taskptr->completed = true;
+    aio_co_wake(taskptr->co);
 }
 
 
 static int rawstor_completion(
     RawstorObject *object, size_t size, size_t res, int error, void *opaque)
 {
-    RawstorTask *task = (RawstorTask*)opaque;
-
-    aio_bh_schedule_oneshot(task->ctx, qemu_rawstor_finish_bh, task);
-
+    RawstorTaskPtr taskptr = opaque;
+    aio_bh_schedule_oneshot(taskptr->ctx, qemu_rawstor_finish_bh, taskptr);
     return 0;
 }
 
 
 static int rawstor_task(RawstorIOEvent *event, void *opaque) {
-    RawstorTask **taskptrptr = opaque;
-    RawstorTask *taskptr = *taskptrptr;
+    RawstorTaskPtr taskptr = *(RawstorTaskPtr*)opaque;
     BDRVRawstorState *state = taskptr->state;
 
     if (rawstor_io_event_error(event) != 0) {
@@ -129,7 +129,8 @@ static int rawstor_task(RawstorIOEvent *event, void *opaque) {
 
     if (taskptr->method(
         state->object,
-        taskptr->qiov->iov, taskptr->qiov->niov, taskptr->bytes, taskptr->offset,
+        taskptr->qiov->iov, taskptr->qiov->niov, taskptr->bytes,
+        taskptr->offset,
         rawstor_completion, taskptr))
     {
         perror("rawstor_method() failed");
@@ -137,16 +138,17 @@ static int rawstor_task(RawstorIOEvent *event, void *opaque) {
     }
 
     rawstor_fd_read(
-        state->input_fd, taskptrptr, sizeof(*taskptrptr), rawstor_task, taskptrptr);
+        state->input_fd, opaque, sizeof(taskptr), rawstor_task, opaque);
     return 0;
 }
 
 
 static void* rawstor_thread(void *opaque) {
     BDRVRawstorState *state = opaque;
-    RawstorTask *taskptr;
+    RawstorTaskPtr taskptr;
 
-    rawstor_fd_read(state->input_fd, &taskptr, sizeof(taskptr), rawstor_task, &taskptr);
+    rawstor_fd_read(
+        state->input_fd, &taskptr, sizeof(taskptr), rawstor_task, &taskptr);
     while (true) {
         RawstorIOEvent *event = rawstor_wait_event();
         if (event == NULL) {
@@ -311,7 +313,7 @@ coroutine_fn qemu_rawstor_start_co(BlockDriverState *bs, int64_t offset,
         .method = method,
         .completed = 0,
     };
-    RawstorTask *taskptr = &task;
+    RawstorTaskPtr taskptr = &task;
 
     qemu_mutex_lock(&state->mutex);
 
