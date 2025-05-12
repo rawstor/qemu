@@ -364,6 +364,11 @@ coroutine_fn qemu_rawstor_block_status(BlockDriverState *bs,
 }
 
 
+static void qemu_rawstor_refresh_limits(BlockDriverState *bs, Error **errp) {
+    bs->bl.max_transfer = 4096;
+}
+
+
 static BlockDriver bdrv_rawstor = {
     .format_name            = "rawstor",
     .protocol_name          = "rawstor",
@@ -378,6 +383,7 @@ static BlockDriver bdrv_rawstor = {
     .bdrv_co_pwritev        = qemu_rawstor_pwritev,
 
     .bdrv_co_block_status   = qemu_rawstor_block_status,
+    .bdrv_refresh_limits    = qemu_rawstor_refresh_limits,
 
     .strong_runtime_opts    = qemu_rawstor_strong_runtime_opts,
 };
