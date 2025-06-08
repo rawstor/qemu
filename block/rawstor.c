@@ -21,6 +21,7 @@
 
 
 typedef struct {
+    RawstorOptsOST opts_ost;
     RawstorUUID object_id;
     RawstorObject *object;
     int input_fd;
@@ -62,6 +63,11 @@ static QemuOptsList runtime_opts = {
             .type = QEMU_OPT_STRING,
             .help = "rawstor object id",
         },
+        {
+            .name = "ost",
+            .type = QEMU_OPT_STRING,
+            .help = "OST host:port",
+        },
         { /* end of list */ }
     },
 };
@@ -69,6 +75,7 @@ static QemuOptsList runtime_opts = {
 
 static const char *const qemu_rawstor_strong_runtime_opts[] = {
     "object-id",
+    "ost",
 
     NULL
 };
@@ -193,34 +200,68 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         return -1;
     }
 
+    RawstorOptsOST opts_ost = {};
+
+    const char *ost_arg = qemu_opt_get(opts, "ost");
+    if (ost_arg != NULL) {
+        const char *comma = strchr(ost_arg, ':');
+        if (comma != NULL) {
+            if (sscanf(comma + 1, "%u", &opts_ost.port) != 1) {
+                error_setg(errp, "ost port argument must be unsigned integer");
+                return -1;
+            }
+        }
+        opts_ost.host = comma != NULL ?
+            strndup(ost_arg, comma - ost_arg) :
+            strdup(ost_arg);
+        if (opts_ost.host == NULL) {
+            error_setg(errp, "Failed to malloc opts_ost.host");
+            return -1;
+        }
+    }
+
+    RawstorObject *object;
+    if (rawstor_object_open(&opts_ost, &object_id, &object)) {
+        error_setg(errp, "Failed to open rawstor object");
+        free(opts_ost.host);
+        return -1;
+    }
+
     int filedes[2];
     if (pipe(filedes)) {
         error_setg(errp, "Failed to create pipe");
+        rawstor_object_close(object);
+        free(opts_ost.host);
         return -1;
     }
 
     if (fd_add_flag(filedes[0], O_NONBLOCK)) {
         error_setg(errp, "Failed to set O_NONBLOCK");
+        close(filedes[0]);
+        close(filedes[1]);
+        rawstor_object_close(object);
+        free(opts_ost.host);
         return -1;
     }
 
     if (fd_add_flag(filedes[1], O_NONBLOCK)) {
         error_setg(errp, "Failed to set O_NONBLOCK");
-        return -1;
-    }
-
-    RawstorObject *object;
-    if (rawstor_object_open(&object_id, &object)) {
-        error_setg(errp, "Failed to open rawstor object");
+        close(filedes[0]);
+        close(filedes[1]);
+        rawstor_object_close(object);
+        free(opts_ost.host);
         return -1;
     }
 
     BDRVRawstorState *state = bs->opaque;
-    state->object_id = object_id;
-    state->object = object;
-    state->input_fd = filedes[0];
-    state->output_fd = filedes[1];
-    
+    *state = (BDRVRawstorState) {
+        .opts_ost = opts_ost,
+        .object_id = object_id,
+        .object = object,
+        .input_fd = filedes[0],
+        .output_fd = filedes[1],
+    };
+
     qemu_mutex_init(&state->mutex);
 
     qemu_thread_create(
@@ -244,11 +285,51 @@ static void qemu_rawstor_close(BlockDriverState *bs) {
     qemu_mutex_destroy(&state->mutex);
 
     rawstor_object_close(state->object);
+
+    free(state->opts_ost.host);
 }
 
 
-static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
-                                        Error **errp) {
+static void qemu_rawstor_unescape(char *src) {
+    char *dst;
+    for (dst = src; *src; ++src, ++dst) {
+        if (*src == '\\' && *(src + 1) != '\0') {
+            src++;
+        }
+        *dst = *src;
+    }
+    *dst = '\0';
+}
+
+
+static char *qemu_rawstor_next_token(char **iter, char delim) {
+    char *start = *iter;
+    char *end;
+    for (end = *iter; *end != '\0'; ++end) {
+        if (*end == delim) {
+            break;
+        }
+
+        if (*end == '\\' && *(end + 1) != '\0') {
+            ++end;
+        }
+    }
+
+    if (*end == '\0') {
+        *iter = end;
+        return start;
+    }
+
+    *end = '\0';
+    *iter = end + 1;
+
+    return start;
+}
+
+
+static void qemu_rawstor_parse_filename(
+    const char *filename, QDict *options, Error **errp)
+{
     const char *start;
 
     if (!strstart(filename, "rawstor:", &start)) {
@@ -257,29 +338,20 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
     }
 
     char *buf = strdup(start);
-    char *name = buf;
+    char *iter = buf;
 
-    while (true) {
-        char *value = strchr(name, '=');
-        if (!value) {
+    while (*iter != '\0') {
+        char *name = qemu_rawstor_next_token(&iter, '=');
+        if (*iter == '\0') {
             error_setg(errp, "Equal sign expected near: %s", name);
             break;
         }
-        *value = '\0';
-        value += 1;
 
-        char *next = strchr(value, ':');
-        if (next) {
-            *next = '\0';
-        }
+        char *value = qemu_rawstor_next_token(&iter, ':');
 
+        qemu_rawstor_unescape(name);
+        qemu_rawstor_unescape(value);
         qdict_put_str(options, name, value);
-
-        if (next) {
-            name = next + 1;
-        } else {
-            break;
-        }
     }
 
     free(buf);
@@ -289,7 +361,7 @@ static void qemu_rawstor_parse_filename(const char *filename, QDict *options,
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
     RawstorObjectSpec spec;
-    if (rawstor_object_spec(&s->object_id, &spec)) {
+    if (rawstor_object_spec(&s->opts_ost, &s->object_id, &spec)) {
         return -1;
     }
     return spec.size;
