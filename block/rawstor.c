@@ -388,15 +388,13 @@ coroutine_fn qemu_rawstor_start_co(BlockDriverState *bs, int64_t offset,
     RawstorTaskPtr taskptr = &task;
 
     qemu_mutex_lock(&state->mutex);
-
     int res = write(state->output_fd, &taskptr, sizeof(taskptr));
+    qemu_mutex_unlock(&state->mutex);
+
     if (res != sizeof(taskptr)) {
         perror("write() failed");
-        qemu_mutex_unlock(&state->mutex);
         return -1;
     }
-
-    qemu_mutex_unlock(&state->mutex);
 
     while (!task.completed) {
         qemu_coroutine_yield();
