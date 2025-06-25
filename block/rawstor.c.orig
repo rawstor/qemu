@@ -105,16 +105,26 @@ static int rawstor_completion(
 }
 
 
+<<<<<<< HEAD
 static int rawstor_task(size_t result, int error, void *opaque) {
+    RawstorTaskPtr taskptr = *(RawstorTaskPtr*)opaque;
+    BDRVRawstorState *state = taskptr->state;
+
     if (error != 0) {
         return -error;
+=======
+static int rawstor_task(RawstorIOEvent *event, void *opaque) {
+    if (rawstor_io_event_error(event) != 0) {
+        errno = rawstor_io_event_error(event);
+        return -errno;
+>>>>>>> 8482cfc06a (add: use queue size feedback)
     }
 
     if (result == 0) {
         return RAWSTOR_EXIT_SUCCESS;
     }
 
-    if (result != sizeof(int)) {
+    if (result != sizeof(taskptr)) {
         errno = EIO;
         return -errno;
     }
@@ -140,8 +150,18 @@ static void* rawstor_thread(void *opaque) {
         return NULL;
     }
 
+<<<<<<< HEAD
+    rawstor_fd_read(
+        state->input_fd, &taskptr, sizeof(taskptr), rawstor_task, &taskptr);
     while (!rawstor_empty()) {
         int res = rawstor_wait();
+=======
+    while (true) {
+        RawstorIOEvent *event = rawstor_wait_event();
+        if (event == NULL) {
+            break;
+        }
+>>>>>>> 8482cfc06a (add: use queue size feedback)
 
         if (res == RAWSTOR_EXIT_SUCCESS) {
             return NULL;
