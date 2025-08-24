@@ -21,8 +21,8 @@
 
 
 typedef struct {
-    RawstorOptsOST opts_ost;
-    RawstorUUID object_id;
+    struct RawstorOptsOST opts_ost;
+    struct RawstorUUID object_id;
     RawstorObject *object;
     int input_fd;
     int output_fd;
@@ -194,13 +194,13 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         error_setg(errp, "object-id option required");
         return -1;
     }
-    RawstorUUID object_id;
+    struct RawstorUUID object_id;
     if (rawstor_uuid_from_string(&object_id, object_id_string)) {
         error_setg(errp, "object-id must be valid UUID");
         return -1;
     }
 
-    RawstorOptsOST opts_ost = {};
+    struct RawstorOptsOST opts_ost = {};
 
     const char *ost_arg = qemu_opt_get(opts, "ost");
     if (ost_arg != NULL) {
@@ -360,7 +360,7 @@ static void qemu_rawstor_parse_filename(
 
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
-    RawstorObjectSpec spec;
+    struct RawstorObjectSpec spec;
     if (rawstor_object_spec(&s->opts_ost, &s->object_id, &spec)) {
         return -1;
     }
@@ -460,7 +460,7 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
-    if (rawstor_initialize(NULL)) {
+    if (rawstor_initialize(NULL, NULL)) {
         // printf("Failed to initialize rawstor\n");
         /**
          * TODO: We have to return fatal error somewhere.
