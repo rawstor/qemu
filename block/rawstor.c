@@ -21,8 +21,7 @@
 
 
 typedef struct {
-    struct RawstorOptsOST opts_ost;
-    struct RawstorUUID object_id;
+    char *object_uri;
     RawstorObject *object;
     int input_fd;
     int output_fd;
@@ -59,14 +58,9 @@ static QemuOptsList runtime_opts = {
     .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
     .desc = {
         {
-            .name = "object-id",
+            .name = "object-uri",
             .type = QEMU_OPT_STRING,
-            .help = "rawstor object id",
-        },
-        {
-            .name = "ost",
-            .type = QEMU_OPT_STRING,
-            .help = "OST host:port",
+            .help = "rawstor object uri",
         },
         { /* end of list */ }
     },
@@ -74,8 +68,7 @@ static QemuOptsList runtime_opts = {
 
 
 static const char *const qemu_rawstor_strong_runtime_opts[] = {
-    "object-id",
-    "ost",
+    "object-uri",
 
     NULL
 };
@@ -189,41 +182,16 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
     qemu_opts_absorb_qdict(opts, options, &error_abort);
 
-    const char *object_id_string = qemu_opt_get(opts, "object-id");
-    if (object_id_string == NULL) {
-        error_setg(errp, "object-id option required");
+    const char *object_uri = qemu_opt_get(opts, "object-uri");
+    if (object_uri == NULL) {
+        error_setg(errp, "object-uri option required");
         return -1;
-    }
-    struct RawstorUUID object_id;
-    if (rawstor_uuid_from_string(&object_id, object_id_string)) {
-        error_setg(errp, "object-id must be valid UUID");
-        return -1;
-    }
-
-    struct RawstorOptsOST opts_ost = {};
-
-    const char *ost_arg = qemu_opt_get(opts, "ost");
-    if (ost_arg != NULL) {
-        const char *comma = strchr(ost_arg, ':');
-        if (comma != NULL) {
-            if (sscanf(comma + 1, "%u", &opts_ost.port) != 1) {
-                error_setg(errp, "ost port argument must be unsigned integer");
-                return -1;
-            }
-        }
-        opts_ost.host = comma != NULL ?
-            strndup(ost_arg, comma - ost_arg) :
-            strdup(ost_arg);
-        if (opts_ost.host == NULL) {
-            error_setg(errp, "Failed to malloc opts_ost.host");
-            return -1;
-        }
     }
 
     RawstorObject *object;
-    if (rawstor_object_open(&opts_ost, &object_id, &object)) {
+    if (rawstor_object_open(object_uri, &object))
+    {
         error_setg(errp, "Failed to open rawstor object");
-        free(opts_ost.host);
         return -1;
     }
 
@@ -231,7 +199,6 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
     if (pipe(filedes)) {
         error_setg(errp, "Failed to create pipe");
         rawstor_object_close(object);
-        free(opts_ost.host);
         return -1;
     }
 
@@ -240,7 +207,6 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         close(filedes[0]);
         close(filedes[1]);
         rawstor_object_close(object);
-        free(opts_ost.host);
         return -1;
     }
 
@@ -249,14 +215,12 @@ static int qemu_rawstor_open(BlockDriverState *bs, QDict *options, int flags,
         close(filedes[0]);
         close(filedes[1]);
         rawstor_object_close(object);
-        free(opts_ost.host);
         return -1;
     }
 
     BDRVRawstorState *state = bs->opaque;
     *state = (BDRVRawstorState) {
-        .opts_ost = opts_ost,
-        .object_id = object_id,
+        .object_uri = strdup(object_uri),
         .object = object,
         .input_fd = filedes[0],
         .output_fd = filedes[1],
@@ -285,8 +249,7 @@ static void qemu_rawstor_close(BlockDriverState *bs) {
     qemu_mutex_destroy(&state->mutex);
 
     rawstor_object_close(state->object);
-
-    free(state->opts_ost.host);
+    free(state->object_uri);
 }
 
 
@@ -361,7 +324,8 @@ static void qemu_rawstor_parse_filename(
 static int64_t coroutine_fn qemu_rawstor_getlength(BlockDriverState *bs) {
     BDRVRawstorState *s = bs->opaque;
     struct RawstorObjectSpec spec;
-    if (rawstor_object_spec(&s->opts_ost, &s->object_id, &spec)) {
+    if (rawstor_object_spec(s->object_uri, &spec))
+    {
         return -1;
     }
     return spec.size;
@@ -460,7 +424,7 @@ static BlockDriver bdrv_rawstor = {
 
 
 static void bdrv_rawstor_init(void) {
-    if (rawstor_initialize(NULL, NULL)) {
+    if (rawstor_initialize(NULL)) {
         // printf("Failed to initialize rawstor\n");
         /**
          * TODO: We have to return fatal error somewhere.

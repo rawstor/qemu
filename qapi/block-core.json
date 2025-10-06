@@ -4439,13 +4439,10 @@
 #
 # Driver specific block device options for rawstor
 #
-# @object-id: Object id
-#
-# @ost: OST host:port
+# @object-uri: Object uri
 ##
 { 'struct': 'BlockdevOptionsRawstor',
-  'data': { 'object-id': 'str',
-            '*ost':      'str' } }
+  'data': { 'object-uri': 'str' } }
 
 
 ##
@@ -5398,11 +5395,11 @@
 #
 # @size: Size of rawstor object in bytes
 #
-# @ost: OST host:port
+# @uri: Rawstor URI
 ##
 { 'struct': 'BlockdevCreateOptionsRawstor',
   'data': { 'size':             'size',
-            '*ost':             'str' } }
+            '*uri':             'str' } }
 
 ##
 # @BlockdevVmdkSubformat:
