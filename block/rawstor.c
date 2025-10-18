@@ -109,20 +109,19 @@ static int rawstor_completion(
 }
 
 
-static int rawstor_task(RawstorIOEvent *event, void *opaque) {
+static int rawstor_task(size_t result, int error, void *opaque) {
     RawstorTaskPtr taskptr = *(RawstorTaskPtr*)opaque;
     BDRVRawstorState *state = taskptr->state;
 
-    if (rawstor_io_event_error(event) != 0) {
-        errno = rawstor_io_event_error(event);
-        return -errno;
+    if (error != 0) {
+        return -error;
     }
 
-    if (rawstor_io_event_result(event) == 0) {
+    if (result == 0) {
         return RAWSTOR_EXIT_SUCCESS;
     }
 
-    if (rawstor_io_event_result(event) != rawstor_io_event_size(event)) {
+    if (result != sizeof(taskptr)) {
         errno = EIO;
         return -errno;
     }
@@ -149,27 +148,20 @@ static void* rawstor_thread(void *opaque) {
 
     rawstor_fd_read(
         state->input_fd, &taskptr, sizeof(taskptr), rawstor_task, &taskptr);
-    while (true) {
-        RawstorIOEvent *event = rawstor_wait_event();
-        if (event == NULL) {
-            break;
-        }
+    while (!rawstor_empty()) {
+        int res = rawstor_wait();
 
-        int rval = rawstor_dispatch_event(event);
-
-        rawstor_release_event(event);
-
-        if (rval == RAWSTOR_EXIT_SUCCESS) {
+        if (res == RAWSTOR_EXIT_SUCCESS) {
             return NULL;
         }
 
-        if (rval < 0) {
+        if (res < 0) {
             /**
              * TODO: What should we do here when event dispatcher
              * returns an error?
              */
-            errno = -rval;
-            perror("rawstor_dispatch_event() failed");
+            errno = -res;
+            perror("rawstor_wait() failed");
         }
     }
     return NULL;
